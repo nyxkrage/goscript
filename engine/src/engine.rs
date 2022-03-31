@@ -2,7 +2,9 @@ extern crate goscript_codegen as cg;
 extern crate goscript_parser as fe;
 extern crate goscript_types as types;
 extern crate goscript_vm as vm;
-use super::std::{bits, fmt2, reflect, sync};
+use vm::value::GosValue;
+
+use super::std::{bits, fmt, reflect, sync};
 
 pub struct Config {
     // working directory
@@ -32,7 +34,7 @@ impl Engine {
     }
 
     fn register_std(&mut self) {
-        fmt2::Fmt2::register(self);
+        fmt::Fmt::register(self);
         bits::Bits::register(self);
         sync::Mutex::register(self);
         sync::RWMutex::register(self);
@@ -54,6 +56,31 @@ impl Engine {
         if let Ok(bc) = code {
             let vm = vm::vm::GosVM::new(bc, &self.ffi, Some(&fs));
             vm.run();
+            0
+        } else {
+            if self.config.trace_vm {
+                el.sort();
+                print!("{}", el);
+            }
+            code.unwrap_err()
+        }
+    }
+
+    pub fn run_func(&mut self, path: &str, func: &str, args: Vec<GosValue>) -> usize {
+        self.register_std();
+
+        let config = types::Config {
+            work_dir: self.config.work_dir.clone(),
+            base_path: self.config.base_path.clone(),
+            trace_parser: self.config.trace_parser,
+            trace_checker: self.config.trace_checker,
+        };
+        let mut fs = fe::FileSet::new();
+        let el = &mut fe::errors::ErrorList::new();
+        let code = cg::entry::parse_check_gen(path, &config, &mut fs, el);
+        if let Ok(bc) = code {
+            let vm = vm::vm::GosVM::new(bc, &self.ffi, Some(&fs));
+            vm.run_func(func, args);
             0
         } else {
             if self.config.trace_vm {

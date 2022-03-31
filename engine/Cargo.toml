@@ -8,6 +8,7 @@ edition = "2021"
 slotmap = "0.4"
 time-test = "0.2.2"
 futures-lite = "1.12.0"
+sprintf = "0.1.2"
 
 [dependencies.goscript-parser]
 path = "../parser"
@@ -35,4 +36,6 @@ criterion = "0.3"
 [[bench]]
 name = "leet5_benchmark"
 harness = false
+
+[features]
 

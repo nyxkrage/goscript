@@ -293,7 +293,6 @@ impl<'a> Fiber<'a> {
         let mut stack_base = frame.stack_base;
         let mut frame_height = self.frames.len();
 
-        let mut total_inst = 0;
         //let mut stats: HashMap<Opcode, usize> = HashMap::new();
         loop {
             let mut frame = self.frames.last_mut().unwrap();
@@ -303,7 +302,6 @@ impl<'a> Fiber<'a> {
             for _ in 0..yield_unit {
                 let inst = code[frame.pc];
                 let inst_op = inst.op();
-                total_inst += 1;
                 //stats.entry(*inst).and_modify(|e| *e += 1).or_insert(1);
                 frame.pc += 1;
                 //dbg!(inst_op);
@@ -945,7 +943,6 @@ impl<'a> Fiber<'a> {
                         self.frames.pop();
                         frame_height -= 1;
                         if self.frames.is_empty() {
-                            dbg!(total_inst);
                             /* dbg!
                             let mut s = stats
                                 .iter()
@@ -1474,7 +1471,6 @@ impl<'a> Fiber<'a> {
                         stack.push(v);
                     }
                     _ => {
-                        dbg!(inst_op);
                         unimplemented!();
                     }
                 };
@@ -1539,8 +1535,38 @@ impl<'a> GosVM<'a> {
     pub fn run(&self) {
         let exec = Rc::new(LocalExecutor::new());
         let ctx = Context::new(exec.clone(), &self.code, &self.gcv, self.ffi, self.fs);
+
         let entry = ctx.new_entry_frame(self.code.entry);
         ctx.spawn_fiber(Stack::new(), entry);
+
+        future::block_on(async {
+            loop {
+                if !exec.try_tick() {
+                    break;
+                }
+            }
+        });
+    }
+
+    pub fn run_func(&self, name: &'a str, args: Vec<GosValue>) {
+        let exec = Rc::new(LocalExecutor::new());
+        let ctx = Context::new(exec.clone(), &self.code, &self.gcv, self.ffi, self.fs);
+        let mut fk = None;
+        for (_, pkg) in &self.code.objects.packages {
+            if pkg._name == "main" {
+                let mi = pkg.get_member_index(name).unwrap();
+                fk = pkg.member(*mi).as_closure().0.borrow().func;
+                break;
+            }
+        }
+
+        let entry = ctx.new_entry_frame(fk.unwrap());
+        let args2 = args
+            .clone()
+            .iter()
+            .map(|v| GosValue64::from_v128(v).unwrap())
+            .collect();
+        ctx.spawn_fiber(Stack::with_data(args2, args), entry);
 
         future::block_on(async {
             loop {
